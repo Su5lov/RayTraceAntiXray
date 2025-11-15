@@ -52,6 +52,24 @@ import org.bukkit.Bukkit;
 public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockController {
 
     public static final Palette<BlockState> GLOBAL_BLOCKSTATE_PALETTE = new GlobalPalette<>(Block.BLOCK_STATE_REGISTRY);
+
+    public static int getGlobalBlockStateId(BlockState blockState) {
+        return Block.BLOCK_STATE_REGISTRY.getId(blockState);
+    }
+
+    private static int getPaletteId(Palette<BlockState> palette, BlockState blockState) {
+        if (palette instanceof GlobalPalette) {
+            return getGlobalBlockStateId(blockState);
+        }
+
+        for (int i = 0; i < palette.getSize(); i++) {
+            if (palette.valueFor(i) == blockState) {
+                return i;
+            }
+        }
+
+        throw new PaletteLookupException(blockState);
+    }
     private static final LevelChunkSection EMPTY_SECTION = null;
     private final RayTraceAntiXray plugin;
     private final Executor executor;
@@ -106,10 +124,10 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
             presetBlockStatesNetherrack = new BlockState[]{Blocks.NETHERRACK.defaultBlockState()};
             presetBlockStatesEndStone = new BlockState[]{Blocks.END_STONE.defaultBlockState()};
             presetBlockStateBitsGlobal = null;
-            presetBlockStateBitsStoneGlobal = new int[]{GLOBAL_BLOCKSTATE_PALETTE.idFor(Blocks.STONE.defaultBlockState())};
-            presetBlockStateBitsDeepslateGlobal = new int[]{GLOBAL_BLOCKSTATE_PALETTE.idFor(Blocks.DEEPSLATE.defaultBlockState())};
-            presetBlockStateBitsNetherrackGlobal = new int[]{GLOBAL_BLOCKSTATE_PALETTE.idFor(Blocks.NETHERRACK.defaultBlockState())};
-            presetBlockStateBitsEndStoneGlobal = new int[]{GLOBAL_BLOCKSTATE_PALETTE.idFor(Blocks.END_STONE.defaultBlockState())};
+            presetBlockStateBitsStoneGlobal = new int[]{getGlobalBlockStateId(Blocks.STONE.defaultBlockState())};
+            presetBlockStateBitsDeepslateGlobal = new int[]{getGlobalBlockStateId(Blocks.DEEPSLATE.defaultBlockState())};
+            presetBlockStateBitsNetherrackGlobal = new int[]{getGlobalBlockStateId(Blocks.NETHERRACK.defaultBlockState())};
+            presetBlockStateBitsEndStoneGlobal = new int[]{getGlobalBlockStateId(Blocks.END_STONE.defaultBlockState())};
         } else {
             toObfuscate = new ArrayList<>(paperWorldConfig.replacementBlocks);
             List<BlockState> presetBlockStateList = new LinkedList<>();
@@ -135,7 +153,7 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
             presetBlockStateBitsGlobal = new int[presetBlockStatesFull.length];
 
             for (int i = 0; i < presetBlockStatesFull.length; i++) {
-                presetBlockStateBitsGlobal[i] = GLOBAL_BLOCKSTATE_PALETTE.idFor(presetBlockStatesFull[i]);
+                presetBlockStateBitsGlobal[i] = getGlobalBlockStateId(presetBlockStatesFull[i]);
             }
 
             presetBlockStateBitsStoneGlobal = null;
@@ -150,7 +168,7 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
             if (block != null && !block.defaultBlockState().isAir()) {
                 // Replace all block states of a specified block
                 for (BlockState blockState : block.getStateDefinition().getPossibleStates()) {
-                    obfuscateGlobal[GLOBAL_BLOCKSTATE_PALETTE.idFor(blockState)] = true;
+                    obfuscateGlobal[getGlobalBlockStateId(blockState)] = true;
                 }
             }
         }
@@ -167,7 +185,7 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
                 if (block != null && !block.defaultBlockState().isAir()) {
                     // Replace all block states of a specified block
                     for (BlockState blockState : block.getStateDefinition().getPossibleStates()) {
-                        int blockStateId = GLOBAL_BLOCKSTATE_PALETTE.idFor(blockState);
+                        int blockStateId = getGlobalBlockStateId(blockState);
                         traceGlobal[blockStateId] = true;
                         obfuscateGlobal[blockStateId] = true;
                     }
@@ -380,7 +398,7 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
                     for (int i = 0; i < presetBlockStateBitsTemp.length; i++) {
                         // This is thread safe because we only request IDs that are guaranteed to be in the palette and are visible
                         // For more details see the comments in the readPalette method
-                        presetBlockStateBitsTemp[i] = chunkPacketInfoAntiXray.getPalette(chunkSectionIndex).idFor(presetBlockStatesFull[i]);
+                        presetBlockStateBitsTemp[i] = getPaletteId(chunkPacketInfoAntiXray.getPalette(chunkSectionIndex), presetBlockStatesFull[i]);
                     }
                 }
 
@@ -1003,8 +1021,8 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
         }
 
         try {
-            return !solidGlobal[GLOBAL_BLOCKSTATE_PALETTE.idFor(chunkSection.getBlockState(x, y, z))];
-        } catch (MissingPaletteEntryException e) {
+            return !solidGlobal[getGlobalBlockStateId(chunkSection.getBlockState(x, y, z))];
+        } catch (MissingPaletteEntryException | PaletteLookupException e) {
             // Race condition / visibility issue / no happens-before relationship
             // We don't care and treat the block as transparent
             // Internal implementation details of PalettedContainer, LinearPalette, HashMapPalette, CrudeIncrementalIntIdentityHashBiMap, ... guarantee us that no (other) exceptions will occur
@@ -1019,9 +1037,9 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
 
         try {
             for (int i = 0; i < palette.getSize(); i++) {
-                temp[i] = global[GLOBAL_BLOCKSTATE_PALETTE.idFor(palette.valueFor(i))];
+                temp[i] = global[getGlobalBlockStateId(palette.valueFor(i))];
             }
-        } catch (MissingPaletteEntryException e) {
+        } catch (MissingPaletteEntryException | PaletteLookupException e) {
             // Race condition / visibility issue / no happens-before relationship
             // We don't care because we at least see the state as it was when the chunk packet was created
             // Internal implementation details of PalettedContainer, LinearPalette, HashMapPalette, CrudeIncrementalIntIdentityHashBiMap, ... guarantee us that no (other) exceptions will occur until we have all the data that we need here
@@ -1033,7 +1051,7 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
 
     @Override
     public void onBlockChange(Level level, BlockPos blockPos, BlockState newBlockState, BlockState oldBlockState, int flags, int maxUpdateDepth) {
-        if (oldBlockState != null && solidGlobal[GLOBAL_BLOCKSTATE_PALETTE.idFor(oldBlockState)] && !solidGlobal[GLOBAL_BLOCKSTATE_PALETTE.idFor(newBlockState)] && blockPos.getY() <= maxBlockHeightUpdatePosition) {
+        if (oldBlockState != null && solidGlobal[getGlobalBlockStateId(oldBlockState)] && !solidGlobal[getGlobalBlockStateId(newBlockState)] && blockPos.getY() <= maxBlockHeightUpdatePosition) {
             updateNearbyBlocks(level, blockPos);
         }
     }
@@ -1087,8 +1105,14 @@ public final class ChunkPacketBlockControllerAntiXray extends ChunkPacketBlockCo
     private void updateBlock(Level level, BlockPos blockPos) {
         BlockState blockState = level.getBlockStateIfLoaded(blockPos);
 
-        if (blockState != null && obfuscateGlobal[GLOBAL_BLOCKSTATE_PALETTE.idFor(blockState)]) {
+        if (blockState != null && obfuscateGlobal[getGlobalBlockStateId(blockState)]) {
             ((ServerLevel) level).getChunkSource().blockChanged(blockPos);
+        }
+    }
+
+    private static final class PaletteLookupException extends RuntimeException {
+        private PaletteLookupException(BlockState blockState) {
+            super("Missing palette entry for block state " + blockState);
         }
     }
 
